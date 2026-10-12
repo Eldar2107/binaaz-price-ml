@@ -261,6 +261,32 @@ def split_indices(y, val_size=0.15, test_size=0.15, seed=SEED):
     return tuple(np.sort(np.concatenate(p)) for p in (tr, va, te))
 
 
+def kfold_indices(y, k: int = 5, seed: int = SEED, stratify: bool = True):
+    """
+    Seeded (stratified) k-fold -> list of k (idx_train, idx_test) pairs.
+    The k test folds are disjoint, cover every row once, and differ in size by
+    at most 1. Stratified on the same strata as split_indices (price deciles),
+    so every fold has the same price mix and the same premium/standard balance.
+    Use it on the TRAIN+VAL pool only; compute tier thresholds / scaling
+    statistics inside each fold from that fold's train part.
+    """
+    y = np.asarray(y)
+    n = len(y)
+    if not 2 <= k <= n:
+        raise ValueError(f"k must be in [2, {n}], got {k}")
+    rng = np.random.default_rng(seed)
+    strata = _strata(y) if stratify else np.zeros(n, dtype=int)
+    fold_of = np.empty(n, dtype=int)
+    offset = 0                                   # keeps fold sizes balanced across strata
+    for s in np.unique(strata):
+        idx = np.flatnonzero(strata == s)
+        rng.shuffle(idx)
+        fold_of[idx] = (np.arange(len(idx)) + offset) % k
+        offset += len(idx)
+    all_idx = np.arange(n)
+    return [(all_idx[fold_of != f], all_idx[fold_of == f]) for f in range(k)]
+
+
 def train_val_test_split(X, y, val_size=0.15, test_size=0.15, seed=SEED):
     """Return (X_tr, y_tr, X_val, y_val, X_te, y_te)."""
     X, y = np.asarray(X), np.asarray(y)
