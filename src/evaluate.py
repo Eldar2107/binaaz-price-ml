@@ -7,6 +7,9 @@ numbers; nothing here imports it.
 
 from __future__ import annotations
 
+import csv
+from pathlib import Path
+
 import numpy as np
 
 
@@ -93,6 +96,39 @@ def roc_auc(y_true, scores) -> float:
     return float(u / (n_pos * n_neg))
 
 
+def roc_curve(y_true, scores):
+    """
+    ROC curve points, ONE per distinct score value. Tied scores (e.g. every
+    sample in the same tree leaf) therefore give a single diagonal step instead
+    of a staircase that depends on row order.
+
+    Returns (fpr, tpr, thresholds). Starts at (0, 0), ends at (1, 1),
+    thresholds[0] = +inf. Same points as sklearn's
+    roc_curve(..., drop_intermediate=False).
+    """
+    y_true = np.asarray(y_true).ravel().astype(int)
+    scores = _as_1d(scores)
+    n_pos = int(np.sum(y_true == 1))
+    n_neg = int(np.sum(y_true == 0))
+    if n_pos == 0 or n_neg == 0:
+        raise ValueError("roc_curve needs both classes present in y_true")
+    order = np.argsort(-scores, kind="mergesort")      # descending score
+    s, y = scores[order], y_true[order]
+    tps = np.cumsum(y == 1)
+    fps = np.cumsum(y == 0)
+    last = np.r_[np.flatnonzero(np.diff(s)), len(s) - 1]   # last row of each distinct score
+    fpr = np.r_[0.0, fps[last] / n_neg]
+    tpr = np.r_[0.0, tps[last] / n_pos]
+    thr = np.r_[np.inf, s[last]]
+    return fpr, tpr, thr
+
+
+def auc_trapezoid(x, y) -> float:
+    """Area under a piecewise-linear curve (trapezoid rule). Used on roc_curve output."""
+    x, y = _as_1d(x), _as_1d(y)
+    return float(np.sum(np.diff(x) * (y[1:] + y[:-1]) / 2.0))
+
+
 # --- Comparison helper ------------------------------------------------------
 def _fmt(v) -> str:
     """Format a number, or a (mean, std) pair as 'mean ± std'."""
@@ -101,6 +137,18 @@ def _fmt(v) -> str:
     if isinstance(v, (float, np.floating)):
         return f"{v:.4f}"
     return str(v)
+
+
+def _table(name_to_metrics: dict):
+    """-> (header, rows) of strings: one row per model, one column per metric."""
+    metrics = []
+    for m in name_to_metrics.values():
+        for k in m:
+            if k not in metrics:
+                metrics.append(k)
+    rows = [[name] + [_fmt(m[k]) if k in m else "-" for k in metrics]
+            for name, m in name_to_metrics.items()]
+    return ["model"] + metrics, rows
 
 
 def compare(name_to_metrics: dict) -> None:
@@ -113,17 +161,41 @@ def compare(name_to_metrics: dict) -> None:
         })
     Values can be floats or (mean, std) tuples. Missing metrics print as '-'.
     """
-    metrics = []
-    for m in name_to_metrics.values():
-        for k in m:
-            if k not in metrics:
-                metrics.append(k)
-    rows = [[name] + [_fmt(m[k]) if k in m else "-" for k in metrics]
-            for name, m in name_to_metrics.items()]
-    header = ["model"] + metrics
+    header, rows = _table(name_to_metrics)
     widths = [max(len(r[i]) for r in [header] + rows) for i in range(len(header))]
     line = "  ".join("-" * w for w in widths)
     print("  ".join(h.ljust(w) for h, w in zip(header, widths)))
     print(line)
     for r in rows:
         print("  ".join(c.ljust(w) for c, w in zip(r, widths)))
+
+
+# --- Saving tables so report numbers are tied to code ------------------------
+def markdown_table(header, rows) -> str:
+    """GitHub-flavoured markdown table (first column left, the rest right-aligned)."""
+    lines = ["| " + " | ".join(header) + " |",
+             "| " + " | ".join(["---"] + ["---:"] * (len(header) - 1)) + " |"]
+    lines += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    return "\n".join(lines)
+
+
+def save_table(name_to_metrics: dict, path, title: str | None = None):
+    """
+    Write the table compare() prints to <path>.md and <path>.csv.
+    `path` may end in .md / .csv or have no suffix. Returns (md_path, csv_path).
+    The CSV uses utf-8-sig so Excel shows the '±' sign correctly.
+    """
+    header, rows = _table(name_to_metrics)
+    path = Path(path)
+    if path.suffix.lower() in (".md", ".csv"):
+        path = path.with_suffix("")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    md_path = path.parent / (path.name + ".md")
+    csv_path = path.parent / (path.name + ".csv")
+    md = (f"### {title}\n\n" if title else "") + markdown_table(header, rows) + "\n"
+    md_path.write_text(md, encoding="utf-8")
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        w.writerows(rows)
+    return md_path, csv_path
