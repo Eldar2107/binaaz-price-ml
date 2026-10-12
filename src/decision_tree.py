@@ -77,6 +77,22 @@ class DecisionTree:
         else:
             raise ValueError(f"Unknown criterion: {self.criterion}")
 
+    def _impurity_decrease(self, y, y_left, y_right) -> float:
+        """Calculate weighted impurity reduction."""
+        n = len(y)
+        if n == 0 or len(y_left) == 0 or len(y_right) == 0:
+            return 0.0
+        
+        parent_imp = self._impurity(y)
+        left_imp = self._impurity(y_left)
+        right_imp = self._impurity(y_right)
+        
+        weight_left = len(y_left) / n
+        weight_right = len(y_right) / n
+        
+        gain = parent_imp - (weight_left * left_imp + weight_right * right_imp)
+        return float(gain)
+
     def _best_split(self, X, y):
         """
         Search features & candidate thresholds; return the split that
