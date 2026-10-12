@@ -49,6 +49,16 @@ def test_mse_impurity():
     y_var = np.array([1.0, 2.0, 3.0])
     assert np.isclose(tree_mse._impurity(y_var), np.var(y_var))
 
+def test_best_split():
+    X = np.array([[0.0], [0.2], [0.8], [1.0]])
+    y = np.array([0, 0, 1, 1])
+
+    tree = DecisionTree(task="classification", criterion="gini", min_samples_split=2)
+    feature, threshold, gain = tree._best_split(X, y)
+
+    assert feature == 0
+    assert 0.2 < threshold < 0.8  #threshold strictly between 0.2 and 0.8
+    assert gain > 0.0
 
 if __name__ == "__main__":
     test_gini_impurity()
@@ -57,4 +67,6 @@ if __name__ == "__main__":
     print("OK test_entropy_impurity")
     test_mse_impurity()
     print("OK test_mse_impurity")
-    print("\nAll impurity unit tests passed successfully!")
+    test_best_split()
+    print("OK test_best_split")
+    print("\nAll impurity unit tests passed successfully")

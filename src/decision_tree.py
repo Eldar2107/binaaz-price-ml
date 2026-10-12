@@ -96,10 +96,51 @@ class DecisionTree:
     def _best_split(self, X, y):
         """
         Search features & candidate thresholds; return the split that
-        maximizes impurity decrease (feature, threshold, decrease), or
-        None if no valid split improves things.
+        maximizes impurity decrease (best_feature, best_threshold, best_gain),
+        or (None, None, 0.0) if no valid split is found.
         """
-        raise NotImplementedError("TODO: best split search")
+        n_samples, n_features = X.shape
+        
+        if n_samples < self.min_samples_split:
+            return None, None, 0.0
+
+        best_gain = -1.0
+        best_feature = None
+        best_threshold = None
+
+        for feature_idx in range(n_features):
+            X_column = X[:, feature_idx]
+            thresholds = np.unique(X_column)
+
+            #if all values are equal, parsing is impossible
+            if len(thresholds) <= 1:
+                continue
+
+            #average points between neighbour unique values
+            midpoints = (thresholds[:-1] + thresholds[1:]) / 2.0
+
+            for threshold in midpoints:
+                left_mask = X_column <= threshold
+                right_mask = ~left_mask
+
+                y_left = y[left_mask]
+                y_right = y[right_mask]
+
+                #checking for the minimum elements in the leaf
+                if len(y_left) < self.min_samples_leaf or len(y_right) < self.min_samples_leaf:
+                    continue
+
+                gain = self._impurity_decrease(y, y_left, y_right)
+
+                if gain > best_gain and gain >= self.min_impurity_decrease:
+                    best_gain = gain
+                    best_feature = feature_idx
+                    best_threshold = threshold
+
+        if best_feature is None or best_gain <= 0.0:
+            return None, None, 0.0
+
+        return best_feature, best_threshold, best_gain
 
     # --- grow / predict -----------------------------------------------------
     def _grow(self, X, y, depth: int) -> Node:
