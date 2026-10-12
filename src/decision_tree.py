@@ -56,7 +56,26 @@ class DecisionTree:
     # --- impurity -----------------------------------------------------------
     def _impurity(self, y) -> float:
         """Gini / entropy (classification) or MSE/variance (regression)."""
-        raise NotImplementedError("TODO: impurity")
+        if len(y) == 0:
+            return 0.0
+
+        if self.criterion == "gini":
+            _, counts = np.unique(y, return_counts=True)
+            probs = counts / len(y)
+            return float(1.0 - np.sum(probs ** 2))
+
+        elif self.criterion == "entropy":
+            _, counts = np.unique(y, return_counts=True)
+            probs = counts / len(y)
+            return float(-np.sum(probs * np.log2(probs + 1e-12)))
+
+        elif self.criterion == "mse":
+            if len(y) <= 1:
+                return 0.0
+            return float(np.var(y))
+
+        else:
+            raise ValueError(f"Unknown criterion: {self.criterion}")
 
     def _best_split(self, X, y):
         """
