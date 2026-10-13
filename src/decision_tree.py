@@ -6,13 +6,6 @@ Must support BOTH tasks:
   - regression     (criterion = "mse")                -> price
 
 scikit-learn is NOT allowed here. This is your own code.
-
-Suggested design:
-  - a small Node (feature index, threshold, left, right, value/leaf_value),
-  - recursive _grow with a best-split search over features & thresholds,
-  - impurity functions (gini / entropy / mse) and the impurity-decrease
-    objective used to pick splits,
-  - hyperparameters that control overfitting (below).
 """
 
 from __future__ import annotations
@@ -21,7 +14,7 @@ import numpy as np
 
 
 class Node:
-    """One node of the tree. Fill in the fields you need."""
+    """One node of the tree."""
     def __init__(self):
         self.feature = None      # int: feature index to split on (internal)
         self.threshold = None    # float: split threshold (internal)
@@ -52,6 +45,9 @@ class DecisionTree:
         self.min_impurity_decrease = min_impurity_decrease
         self.random_state = random_state
         self.root: Node | None = None
+        self.feature_importances_: np.ndarray | None = None
+        self._feature_importances: np.ndarray | None = None
+        self._n_total_samples: int = 0
 
     # --- impurity -----------------------------------------------------------
     def _impurity(self, y) -> float:
@@ -77,72 +73,129 @@ class DecisionTree:
         else:
             raise ValueError(f"Unknown criterion: {self.criterion}")
 
-    def _impurity_decrease(self, y, y_left, y_right) -> float:
-        """Calculate weighted impurity reduction."""
-        n = len(y)
-        if n == 0 or len(y_left) == 0 or len(y_right) == 0:
-            return 0.0
-        
-        parent_imp = self._impurity(y)
-        left_imp = self._impurity(y_left)
-        right_imp = self._impurity(y_right)
-        
-        weight_left = len(y_left) / n
-        weight_right = len(y_right) / n
-        
-        gain = parent_imp - (weight_left * left_imp + weight_right * right_imp)
-        return float(gain)
-
     def _best_split(self, X, y):
         """
-        Search features & candidate thresholds; return the split that
-        maximizes impurity decrease (best_feature, best_threshold, best_gain),
-        or (None, None, 0.0) if no valid split is found.
+        Fast vectorized search using np.cumsum across features & candidate thresholds.
+        Returns (best_feature, best_threshold, best_gain).
         """
         n_samples, n_features = X.shape
-        
+
         if n_samples < self.min_samples_split:
             return None, None, 0.0
 
+        parent_impurity = self._impurity(y)
         best_gain = -1.0
         best_feature = None
         best_threshold = None
 
-        for feature_idx in range(n_features):
-            X_column = X[:, feature_idx]
-            thresholds = np.unique(X_column)
+        if self.task == "classification":
+            #getting all unique classes
+            classes = np.unique(y)
+            n_classes = len(classes)
+            if n_classes <= 1:
+                return None, None, 0.0
+            
+            #transforming classes into indexes for OHE 
+            class_to_idx = {c: i for i, c in enumerate(classes)}
+            y_encoded = np.array([class_to_idx[val] for val in y], dtype=int)
 
-            #if all values are equal, parsing is impossible
-            if len(thresholds) <= 1:
-                continue
+            for feat_idx in range(n_features):
+                X_col = X[:, feat_idx]
+                sort_idx = np.argsort(X_col)
+                X_sorted = X_col[sort_idx]
+                y_sorted = y_encoded[sort_idx]
 
-            #average points between neighbour unique values
-            midpoints = (thresholds[:-1] + thresholds[1:]) / 2.0
-
-            for threshold in midpoints:
-                left_mask = X_column <= threshold
-                right_mask = ~left_mask
-
-                y_left = y[left_mask]
-                y_right = y[right_mask]
-
-                #checking for the minimum elements in the leaf
-                if len(y_left) < self.min_samples_leaf or len(y_right) < self.min_samples_leaf:
+                split_mask = X_sorted[:-1] != X_sorted[1:]
+                if not np.any(split_mask):
                     continue
 
-                gain = self._impurity_decrease(y, y_left, y_right)
+                y_ohe = np.zeros((n_samples, n_classes), dtype=float)
+                y_ohe[np.arange(n_samples), y_sorted] = 1.0
 
-                if gain > best_gain and gain >= self.min_impurity_decrease:
-                    best_gain = gain
-                    best_feature = feature_idx
-                    best_threshold = threshold
+                cum_counts_left = np.cumsum(y_ohe, axis=0)[:-1]
+                cum_counts_right = cum_counts_left[-1] - cum_counts_left
+
+                n_left = np.arange(1, n_samples, dtype=float)
+                n_right = n_samples - n_left
+
+                valid = split_mask & (n_left >= self.min_samples_leaf) & (n_right >= self.min_samples_leaf)
+                if not np.any(valid):
+                    continue
+
+                p_left = cum_counts_left / n_left[:, None]
+                p_right = cum_counts_right / n_right[:, None]
+
+                if self.criterion == "gini":
+                    imp_left = 1.0 - np.sum(p_left ** 2, axis=1)
+                    imp_right = 1.0 - np.sum(p_right ** 2, axis=1)
+                elif self.criterion == "entropy":
+                    p_left = np.clip(p_left, 1e-12, 1.0)
+                    p_right = np.clip(p_right, 1e-12, 1.0)
+                    imp_left = -np.sum(p_left * np.log2(p_left), axis=1)
+                    imp_right = -np.sum(p_right * np.log2(p_right), axis=1)
+                else:
+                    raise ValueError(f"Unknown classification criterion: {self.criterion}")
+
+                gain = (n_samples / self._n_total_samples) * (
+                    parent_impurity - (n_left / n_samples) * imp_left - (n_right / n_samples) * imp_right
+                )
+
+                valid_gains = np.where(valid, gain, -1.0)
+                max_i = np.argmax(valid_gains)
+                max_g = valid_gains[max_i]
+
+                if max_g > best_gain and max_g >= self.min_impurity_decrease:
+                    best_gain = max_g
+                    best_feature = feat_idx
+                    best_threshold = float((X_sorted[max_i] + X_sorted[max_i + 1]) / 2.0)
+
+        else:  #task regression
+            if n_samples <= 1:
+                return None, None, 0.0
+
+            for feat_idx in range(n_features):
+                X_col = X[:, feat_idx]
+                sort_idx = np.argsort(X_col)
+                X_sorted = X_col[sort_idx]
+                y_sorted = y[sort_idx]
+
+                split_mask = X_sorted[:-1] != X_sorted[1:]
+                if not np.any(split_mask):
+                    continue
+
+                cum_sum = np.cumsum(y_sorted)[:-1]
+                cum_sq = np.cumsum(y_sorted ** 2)[:-1]
+
+                n_left = np.arange(1, n_samples, dtype=float)
+                n_right = n_samples - n_left
+
+                valid = split_mask & (n_left >= self.min_samples_leaf) & (n_right >= self.min_samples_leaf)
+                if not np.any(valid):
+                    continue
+
+                sum_right = cum_sum[-1] - cum_sum
+                sq_right = cum_sq[-1] - cum_sq
+
+                var_left = np.maximum(0.0, (cum_sq / n_left) - (cum_sum / n_left) ** 2)
+                var_right = np.maximum(0.0, (sq_right / n_right) - (sum_right / n_right) ** 2)
+
+                gain = (n_samples / self._n_total_samples) * (
+                    parent_impurity - (n_left / n_samples) * var_left - (n_right / n_samples) * var_right
+                )
+
+                valid_gains = np.where(valid, gain, -1.0)
+                max_i = np.argmax(valid_gains)
+                max_g = valid_gains[max_i]
+
+                if max_g > best_gain and max_g >= self.min_impurity_decrease:
+                    best_gain = max_g
+                    best_feature = feat_idx
+                    best_threshold = float((X_sorted[max_i] + X_sorted[max_i + 1]) / 2.0)
 
         if best_feature is None or best_gain <= 0.0:
             return None, None, 0.0
 
-        return best_feature, best_threshold, best_gain
-
-
+        return best_feature, best_threshold, float(best_gain)
 
     # --- grow / predict -----------------------------------------------------
     def _leaf_value(self, y):
@@ -152,15 +205,12 @@ class DecisionTree:
         if self.task == "regression":
             return float(np.mean(y))
         else:
-            # Возвращаем самый частый класс (majority vote)
             vals, counts = np.unique(y, return_counts=True)
             return vals[np.argmax(counts)]
 
     def _grow(self, X, y, depth: int) -> Node:
         """Recursively build the tree, respecting the stopping rules."""
         node = Node()
-        
-        #stopping criteria
         n_samples = len(y)
         is_max_depth = self.max_depth is not None and depth >= self.max_depth
         
@@ -172,12 +222,14 @@ class DecisionTree:
             node.value = self._leaf_value(y)
             return node
 
-        #best split
         best_feat, best_thresh, best_gain = self._best_split(X, y)
 
         if best_feat is None:
             node.value = self._leaf_value(y)
             return node
+
+        if self._feature_importances is not None:
+            self._feature_importances[best_feat] += best_gain
 
         node.feature = best_feat
         node.threshold = best_thresh
@@ -185,7 +237,6 @@ class DecisionTree:
         left_mask = X[:, best_feat] <= best_thresh
         right_mask = ~left_mask
 
-        #recursive node building
         node.left = self._grow(X[left_mask], y[left_mask], depth + 1)
         node.right = self._grow(X[right_mask], y[right_mask], depth + 1)
 
@@ -194,7 +245,19 @@ class DecisionTree:
     def fit(self, X, y):
         X = np.asarray(X, dtype=float)
         y = np.asarray(y)
+        
+        self._n_total_samples = len(y)
+        n_features = X.shape[1]
+        self._feature_importances = np.zeros(n_features, dtype=float)
+        
         self.root = self._grow(X, y, depth=0)
+        
+        total = np.sum(self._feature_importances)
+        if total > 0:
+            self.feature_importances_ = self._feature_importances / total
+        else:
+            self.feature_importances_ = self._feature_importances
+            
         return self
 
     def _predict_one(self, x, node: Node):
@@ -225,7 +288,6 @@ class DecisionTree:
             raise ValueError("predict_proba is only supported for classification tasks.")
         
         preds = self.predict(X)
-        #if binary classification, returning both classes probabilities
         probs = []
         for p in preds:
             probs.append([1.0 - float(p), float(p)])
