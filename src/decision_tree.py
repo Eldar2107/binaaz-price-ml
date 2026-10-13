@@ -142,10 +142,54 @@ class DecisionTree:
 
         return best_feature, best_threshold, best_gain
 
+
+
     # --- grow / predict -----------------------------------------------------
+    def _leaf_value(self, y):
+        """Compute the leaf prediction value."""
+        if len(y) == 0:
+            return 0.0 if self.task == "regression" else 0
+        if self.task == "regression":
+            return float(np.mean(y))
+        else:
+            # Возвращаем самый частый класс (majority vote)
+            vals, counts = np.unique(y, return_counts=True)
+            return vals[np.argmax(counts)]
+
     def _grow(self, X, y, depth: int) -> Node:
         """Recursively build the tree, respecting the stopping rules."""
-        raise NotImplementedError("TODO: recursive grow")
+        node = Node()
+        
+        #stopping criteria
+        n_samples = len(y)
+        is_max_depth = self.max_depth is not None and depth >= self.max_depth
+        
+        if (
+            is_max_depth
+            or n_samples < self.min_samples_split
+            or len(np.unique(y)) == 1
+        ):
+            node.value = self._leaf_value(y)
+            return node
+
+        #best split
+        best_feat, best_thresh, best_gain = self._best_split(X, y)
+
+        if best_feat is None:
+            node.value = self._leaf_value(y)
+            return node
+
+        node.feature = best_feat
+        node.threshold = best_thresh
+
+        left_mask = X[:, best_feat] <= best_thresh
+        right_mask = ~left_mask
+
+        #recursive node building
+        node.left = self._grow(X[left_mask], y[left_mask], depth + 1)
+        node.right = self._grow(X[right_mask], y[right_mask], depth + 1)
+
+        return node
 
     def fit(self, X, y):
         X = np.asarray(X, dtype=float)
@@ -154,11 +198,35 @@ class DecisionTree:
         return self
 
     def _predict_one(self, x, node: Node):
-        raise NotImplementedError("TODO: traverse to a leaf")
+        """Recursively traverse down to a leaf for a single sample x."""
+        if node.is_leaf():
+            return node.value
+        if x[node.feature] <= node.threshold:
+            return self._predict_one(x, node.left)
+        return self._predict_one(x, node.right)
 
     def predict(self, X):
-        raise NotImplementedError("TODO: predict")
+        X = np.asarray(X, dtype=float)
+        if self.root is None:
+            raise ValueError("The model is not fitted yet. Call 'fit' first.")
+        return np.array([self._predict_one(x, self.root) for x in X])
+
+    def _predict_proba_one(self, x, node: Node):
+        """Traverse to a leaf and return label distribution/probabilities."""
+        if node.is_leaf():
+            return node.value
+        if x[node.feature] <= node.threshold:
+            return self._predict_proba_one(x, node.left)
+        return self._predict_proba_one(x, node.right)
 
     def predict_proba(self, X):
         """Classification only: return class probabilities from leaf counts."""
-        raise NotImplementedError("TODO: predict_proba (classification)")
+        if self.task != "classification":
+            raise ValueError("predict_proba is only supported for classification tasks.")
+        
+        preds = self.predict(X)
+        #if binary classification, returning both classes probabilities
+        probs = []
+        for p in preds:
+            probs.append([1.0 - float(p), float(p)])
+        return np.array(probs)
