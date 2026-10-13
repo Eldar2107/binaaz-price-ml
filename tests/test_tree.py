@@ -60,6 +60,28 @@ def test_best_split():
     assert 0.2 < threshold < 0.8  #threshold strictly between 0.2 and 0.8
     assert gain > 0.0
 
+def test_full_tree_fit_predict():
+    X = np.array([[1.0, 2.0], [1.5, 1.8], [5.0, 8.0], [6.0, 9.0]])
+    y = np.array([0, 0, 1, 1])
+
+    tree = DecisionTree(task="classification", criterion="gini", max_depth=3)
+    tree.fit(X, y)
+
+    predictions = tree.predict(X)
+    assert np.array_equal(predictions, y)
+
+
+def test_regression_tree():
+    X = np.array([[1.0], [2.0], [3.0], [4.0]])
+    y = np.array([10.0, 20.0, 30.0, 40.0])
+
+    tree = DecisionTree(task="regression", criterion="mse", max_depth=2)
+    tree.fit(X, y)
+
+    preds = tree.predict(X)
+    assert len(preds) == 4
+    assert np.allclose(preds, y, atol=5.0)
+
 if __name__ == "__main__":
     test_gini_impurity()
     print("OK test_gini_impurity")
@@ -69,4 +91,8 @@ if __name__ == "__main__":
     print("OK test_mse_impurity")
     test_best_split()
     print("OK test_best_split")
+    test_full_tree_fit_predict()
+    print("OK test_full_tree_fit_predict")
+    test_regression_tree()
+    print("OK test_regression_tree")
     print("\nAll impurity unit tests passed successfully")
