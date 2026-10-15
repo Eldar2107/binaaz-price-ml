@@ -208,6 +208,13 @@ class DecisionTree:
             vals, counts = np.unique(y, return_counts=True)
             return vals[np.argmax(counts)]
 
+    def _leaf_proba(self, y):
+        """Compute class probabilities [p0, p1] in the leaf."""
+        if len(y) == 0:
+            return np.array([0.5, 0.5])
+        p1 = float(np.mean(y == 1))
+        return np.array([1.0 - p1, p1])
+
     def _grow(self, X, y, depth: int) -> Node:
         """Recursively build the tree, respecting the stopping rules."""
         node = Node()
@@ -220,12 +227,14 @@ class DecisionTree:
             or len(np.unique(y)) == 1
         ):
             node.value = self._leaf_value(y)
+            node.proba = self._leaf_proba(y) if self.task == "classification" else None
             return node
 
         best_feat, best_thresh, best_gain = self._best_split(X, y)
 
         if best_feat is None:
             node.value = self._leaf_value(y)
+            node.proba = self._leaf_proba(y) if self.task == "classification" else None
             return node
 
         if self._feature_importances is not None:
@@ -241,7 +250,6 @@ class DecisionTree:
         node.right = self._grow(X[right_mask], y[right_mask], depth + 1)
 
         return node
-
     def fit(self, X, y):
         X = np.asarray(X, dtype=float)
         y = np.asarray(y)
@@ -269,26 +277,25 @@ class DecisionTree:
         return self._predict_one(x, node.right)
 
     def predict(self, X):
+        """Return 1D array of predicted class labels or values."""
         X = np.asarray(X, dtype=float)
         if self.root is None:
             raise ValueError("The model is not fitted yet. Call 'fit' first.")
         return np.array([self._predict_one(x, self.root) for x in X])
 
     def _predict_proba_one(self, x, node: Node):
-        """Traverse to a leaf and return label distribution/probabilities."""
+        """Traverse to a leaf and return class probabilities [p0, p1]."""
         if node.is_leaf():
-            return node.value
+            return getattr(node, "proba", np.array([1.0 - float(node.value), float(node.value)]))
         if x[node.feature] <= node.threshold:
             return self._predict_proba_one(x, node.left)
         return self._predict_proba_one(x, node.right)
 
     def predict_proba(self, X):
-        """Classification only: return class probabilities from leaf counts."""
+        """Classification only: return 2D array of class probabilities shape (N, 2)."""
         if self.task != "classification":
             raise ValueError("predict_proba is only supported for classification tasks.")
-        
-        preds = self.predict(X)
-        probs = []
-        for p in preds:
-            probs.append([1.0 - float(p), float(p)])
-        return np.array(probs)
+        X = np.asarray(X, dtype=float)
+        if self.root is None:
+            raise ValueError("The model is not fitted yet. Call 'fit' first.")
+        return np.array([self._predict_proba_one(x, self.root) for x in X])
