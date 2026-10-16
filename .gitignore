@@ -26,5 +26,6 @@ results/
 .idea/
 .vscode/
 explore_output.txt
-models/
+# models/
+!models/bundle.pkl
 
