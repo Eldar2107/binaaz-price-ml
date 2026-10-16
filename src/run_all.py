@@ -1,4 +1,4 @@
-﻿"""
+"""
 run_all.py - ONE command reproduces every headline number and figure.
 
 Run from the repo root:
@@ -21,6 +21,13 @@ from __future__ import annotations
 import contextlib
 import io
 from pathlib import Path
+import sys
+
+# Ensure UTF-8 output on Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import numpy as np
 from sklearn.svm import LinearSVC
