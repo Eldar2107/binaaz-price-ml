@@ -308,13 +308,13 @@ if page == "data":
 """, unsafe_allow_html=True)
 
     eda_figs = [
-        ("01_price_dist.png",     "Price distribution (log scale)"),
-        ("02_area_vs_price.png",  "Area vs Price"),
-        ("03_room_dist.png",      "Rooms distribution"),
-        ("04_district_price.png", "Median price by district"),
-        ("05_category_dist.png",  "Category breakdown"),
-        ("06_floor_dist.png",     "Floor distribution"),
-        ("07_correlation.png",    "Feature correlation heatmap"),
+        ("01_price_distribution.png",    "Price distribution (log scale)"),
+        ("02_area_vs_price.png",          "Area vs Price"),
+        ("03_rooms_vs_price.png",         "Rooms vs Price"),
+        ("04_category_vs_price.png",      "Category breakdown"),
+        ("05_district_median_price.png",  "Median price by district"),
+        ("06_location_map.png",           "Geographic coordinates map"),
+        ("07_tier_balance.png",           "Price tier distribution (Standard vs Premium)"),
     ]
     avail = [(n, c) for n, c in eda_figs if (FIGS / n).exists()]
     if avail:
