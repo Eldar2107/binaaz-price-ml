@@ -27,8 +27,8 @@ from sklearn.svm import LinearSVC
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 from . import cv, data_prep, eda, error_analysis, evaluate, plots
-# from .decision_tree import DecisionTree      # TODO(stage 2)
-# from .svm import PegasosSVM                  # TODO(stage 2)
+from .decision_tree import DecisionTree
+from .svm import PegasosSVM
 
 SEED = data_prep.SEED
 DEPTHS = [4, 6, 8, 10, 12, 16]
@@ -158,13 +158,13 @@ def main(make_figures: bool = True) -> None:
     reg_models = {
         "sklearn tree": DecisionTreeRegressor(max_depth=best_d_reg, random_state=SEED)
                         .fit(X_tr, ylog_tr),
-        # TODO(stage 2): "our tree": DecisionTree(task="regression", criterion="mse",
-        #                                          max_depth=...).fit(X_tr, ylog_tr),
+        "our tree": DecisionTree(task="regression", criterion="mse",
+                                 max_depth=best_d_reg, random_state=SEED).fit(X_tr, ylog_tr),
     }
-    # registry: name -> factory of an UNFITTED model (for cross-validation)
     reg_factories = {
         "sklearn tree": lambda: DecisionTreeRegressor(max_depth=best_d_reg, random_state=SEED),
-        # TODO(stage 2): "our tree": lambda: DecisionTree(task="regression", ...),
+        "our tree": lambda: DecisionTree(task="regression", criterion="mse",
+                                         max_depth=best_d_reg, random_state=SEED),
     }
     reg_pred_log = {n: np.asarray(m.predict(X_te), dtype=float).ravel()
                     for n, m in reg_models.items()}
@@ -191,9 +191,11 @@ def main(make_figures: bool = True) -> None:
                          .fit(X_tr, t_tr), False),
         "sklearn LinearSVC": (LinearSVC(C=1.0, dual=False, random_state=SEED, max_iter=1000)
                               .fit(Xs_tr, t_tr), True),
-        # TODO(stage 2): "our tree": (DecisionTree(task="classification", ...)
-        #                              .fit(X_tr, t_tr), False),
-        # TODO(stage 2): "our Pegasos SVM": (PegasosSVM(...).fit(Xs_tr, t_tr), True),
+        "our tree": (DecisionTree(task="classification", criterion="gini",
+                                  max_depth=best_d_cls, random_state=SEED)
+                     .fit(X_tr, t_tr), False),
+        "our Pegasos SVM": (PegasosSVM(lambda_=1e-3, n_epochs=10, random_state=SEED)
+                            .fit(Xs_tr, t_tr), True),
     }
     # registry: name -> (factory of an UNFITTED model, uses standardized features?)
     cls_factories = {
@@ -201,8 +203,9 @@ def main(make_figures: bool = True) -> None:
                                                         random_state=SEED), False),
         "sklearn LinearSVC": (lambda: LinearSVC(C=1.0, dual=False, random_state=SEED,
                                                 max_iter=1000), True),
-        # TODO(stage 2): "our tree": (lambda: DecisionTree(task="classification", ...), False),
-        # TODO(stage 2): "our Pegasos SVM": (lambda: PegasosSVM(...), True),
+        "our tree": (lambda: DecisionTree(task="classification", criterion="gini",
+                                           max_depth=best_d_cls, random_state=SEED), False),
+        "our Pegasos SVM": (lambda: PegasosSVM(lambda_=1e-3, n_epochs=10, random_state=SEED), True),
     }
     cls_pred, cls_score, cls_results, cms = {}, {}, {}, {}
     for name, (model, scaled) in cls_models.items():
