@@ -7,7 +7,7 @@
 [![Code Style](https://img.shields.io/badge/Code%20Style-Black%20%2B%20Flake8-black.svg)](https://github.com/psf/black)
 [![Release Tag](https://img.shields.io/badge/Tag-v1.0--final-orange.svg)](https://github.com/Eldar2107/binaaz-price-ml/releases/tag/v1.0-final)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
+# OGRUUUUUUUUUUUU
 Predicting real-estate valuations in Baku using a **Decision Tree (CART)** and a **Soft-Margin Linear SVM (Pegasos)**, both built entirely from scratch in pure NumPy and benchmarked rigorously against scikit-learn.
 
 Final project for **MLE-AI-201 Machine Learning**, engineered by **Eldar Samedov**, **Narmina Rzayeva**, and **Mirkenan Qedirli**. Real-world data sourced from [bina.az](https://bina.az/), Azerbaijan's premier real-estate portal (63,908 verified listings across Baku).
