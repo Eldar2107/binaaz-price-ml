@@ -1,5 +1,5 @@
 # bina.az Real-Estate Price Prediction & Tier Classification
-
+# BU Readme Eldara aid deyil ideya ogurlanib
 [![Python 3.10 | 3.11 | 3.12](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![From Scratch](https://img.shields.io/badge/From--Scratch-Pure%20NumPy-success.svg)](https://numpy.org/)
 [![Streamlit App](https://img.shields.io/badge/Live%20Demo-Streamlit%20Cloud-FF4B4B.svg)](https://binaaz-price-ml-nuhy5v73gecqfuyeh6kced.streamlit.app/)
